@@ -1,0 +1,239 @@
+-- Services
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local CoreGui = game:GetService("CoreGui")
+
+local player = Players.LocalPlayer
+local char, hum, hrp
+local savedCFrame
+local tweenSpeed = 100
+
+local function loadChar()
+	char = player.Character or player.CharacterAdded:Wait()
+	hum = char:WaitForChild("Humanoid")
+	hrp = char:WaitForChild("HumanoidRootPart")
+end
+loadChar()
+player.CharacterAdded:Connect(loadChar)
+
+-- States
+local noclip, fastwalk, fly, infjump = false, false, false, false
+
+-- GUI
+local gui = Instance.new("ScreenGui")
+gui.Name = "NovaHub"
+pcall(function() gui.Parent = CoreGui end)
+
+local main = Instance.new("Frame", gui)
+main.Size = UDim2.new(0, 220, 0, 390)
+main.Position = UDim2.new(0.02, 0, 0.3, 0)
+main.BackgroundColor3 = Color3.fromRGB(0,0,0)
+
+Instance.new("UICorner", main).CornerRadius = UDim.new(0,6)
+local stroke = Instance.new("UIStroke", main)
+stroke.Color = Color3.fromRGB(255,105,180)
+stroke.Thickness = 2
+
+-- Title (Drag)
+local title = Instance.new("TextLabel", main)
+title.Size = UDim2.new(1,0,0,35)
+title.Text = "Nova Hub"
+title.Font = Enum.Font.GothamBold
+title.TextSize = 20
+title.TextColor3 = Color3.fromRGB(255,105,180)
+title.BackgroundTransparency = 1
+
+-- Drag logic
+local dragging, dragStart, startPos
+title.InputBegan:Connect(function(i)
+	if i.UserInputType == Enum.UserInputType.MouseButton1 then
+		dragging = true
+		dragStart = i.Position
+		startPos = main.Position
+	end
+end)
+
+UIS.InputChanged:Connect(function(i)
+	if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then
+		local delta = i.Position - dragStart
+		main.Position = UDim2.new(
+			startPos.X.Scale, startPos.X.Offset + delta.X,
+			startPos.Y.Scale, startPos.Y.Offset + delta.Y
+		)
+	end
+end)
+
+UIS.InputEnded:Connect(function(i)
+	if i.UserInputType == Enum.UserInputType.MouseButton1 then
+		dragging = false
+	end
+end)
+
+-- Button creator
+local function makeButton(text, y)
+	local b = Instance.new("TextButton", main)
+	b.Size = UDim2.new(0.85,0,0,36)
+	b.Position = UDim2.new(0.075,0,0,y)
+	b.Text = text
+	b.Font = Enum.Font.Gotham
+	b.TextSize = 14
+	b.TextColor3 = Color3.new(1,1,1)
+	b.BackgroundColor3 = Color3.fromRGB(10,10,10)
+	Instance.new("UICorner", b).CornerRadius = UDim.new(0,4)
+	local s = Instance.new("UIStroke", b)
+	s.Color = Color3.fromRGB(255,105,180)
+	return b
+end
+
+-- Buttons (TOP → BOTTOM)
+local saveBtn  = makeButton("Save Spot", 40)
+local tweenBtn = makeButton("Tween To Spot", 80)
+
+-- Speed label
+local speedLabel = Instance.new("TextLabel", main)
+speedLabel.Size = UDim2.new(1,0,0,25)
+speedLabel.Position = UDim2.new(0,0,0,120)
+speedLabel.Text = "Tween Speed: 100"
+speedLabel.TextColor3 = Color3.new(1,1,1)
+speedLabel.BackgroundTransparency = 1
+speedLabel.Font = Enum.Font.Gotham
+speedLabel.TextSize = 14
+
+-- Slider BG
+local sliderBg = Instance.new("Frame", main)
+sliderBg.Size = UDim2.new(0.85,0,0,8)
+sliderBg.Position = UDim2.new(0.075,0,0,150)
+sliderBg.BackgroundColor3 = Color3.fromRGB(30,30,30)
+Instance.new("UICorner", sliderBg).CornerRadius = UDim.new(1,0)
+
+-- Slider Fill
+local sliderFill = Instance.new("Frame", sliderBg)
+sliderFill.BackgroundColor3 = Color3.fromRGB(255,105,180)
+sliderFill.Size = UDim2.new(100/500,0,1,0)
+Instance.new("UICorner", sliderFill).CornerRadius = UDim.new(1,0)
+
+-- Slider logic
+local minSpeed, maxSpeed = 0, 500
+local sliding = false
+
+local function updateSlider(x)
+	local percent = math.clamp(
+		(x - sliderBg.AbsolutePosition.X) / sliderBg.AbsoluteSize.X,
+		0, 1
+	)
+	sliderFill.Size = UDim2.new(percent,0,1,0)
+	tweenSpeed = math.floor(minSpeed + (maxSpeed - minSpeed) * percent)
+	speedLabel.Text = "Tween Speed: " .. tweenSpeed
+end
+
+sliderBg.InputBegan:Connect(function(i)
+	if i.UserInputType == Enum.UserInputType.MouseButton1 then
+		sliding = true
+		updateSlider(i.Position.X)
+	end
+end)
+
+UIS.InputChanged:Connect(function(i)
+	if sliding and i.UserInputType == Enum.UserInputType.MouseMovement then
+		updateSlider(i.Position.X)
+	end
+end)
+
+UIS.InputEnded:Connect(function(i)
+	if i.UserInputType == Enum.UserInputType.MouseButton1 then
+		sliding = false
+	end
+end)
+
+-- Movement buttons
+local noclipBtn = makeButton("No Clip: OFF", 180)
+local fastBtn   = makeButton("Fast Walk: OFF", 220)
+local flyBtn    = makeButton("Fly: OFF", 260)
+local jumpBtn   = makeButton("Inf Jump: OFF", 300)
+
+-- Save Spot
+saveBtn.MouseButton1Click:Connect(function()
+	if hrp then savedCFrame = hrp.CFrame end
+end)
+
+-- Tween To Spot
+tweenBtn.MouseButton1Click:Connect(function()
+	if not savedCFrame or not hrp then return end
+	if tweenSpeed <= 0 then
+		hrp.CFrame = savedCFrame
+		return
+	end
+	local dist = (hrp.Position - savedCFrame.Position).Magnitude
+	TweenService:Create(
+		hrp,
+		TweenInfo.new(dist / tweenSpeed, Enum.EasingStyle.Linear),
+		{CFrame = savedCFrame}
+	):Play()
+end)
+
+-- No Clip
+RunService.Stepped:Connect(function()
+	if noclip and char then
+		for _,v in ipairs(char:GetDescendants()) do
+			if v:IsA("BasePart") then
+				v.CanCollide = false
+			end
+		end
+	end
+end)
+
+noclipBtn.MouseButton1Click:Connect(function()
+	noclip = not noclip
+	noclipBtn.Text = "No Clip: " .. (noclip and "ON" or "OFF")
+end)
+
+-- Fast Walk
+fastBtn.MouseButton1Click:Connect(function()
+	fastwalk = not fastwalk
+	hum.WalkSpeed = fastwalk and 60 or 16
+	fastBtn.Text = "Fast Walk: " .. (fastwalk and "ON" or "OFF")
+end)
+
+-- Fly
+local flyBV, flyBG
+RunService.RenderStepped:Connect(function()
+	if fly and hrp then
+		local cam = workspace.CurrentCamera
+		local dir = Vector3.zero
+		if UIS:IsKeyDown(Enum.KeyCode.W) then dir += cam.CFrame.LookVector end
+		if UIS:IsKeyDown(Enum.KeyCode.S) then dir -= cam.CFrame.LookVector end
+		if UIS:IsKeyDown(Enum.KeyCode.A) then dir -= cam.CFrame.RightVector end
+		if UIS:IsKeyDown(Enum.KeyCode.D) then dir += cam.CFrame.RightVector end
+		flyBV.Velocity = dir * 80
+		flyBG.CFrame = cam.CFrame
+	end
+end)
+
+flyBtn.MouseButton1Click:Connect(function()
+	fly = not fly
+	flyBtn.Text = "Fly: " .. (fly and "ON" or "OFF")
+
+	if fly then
+		flyBV = Instance.new("BodyVelocity", hrp)
+		flyBV.MaxForce = Vector3.new(1e9,1e9,1e9)
+		flyBG = Instance.new("BodyGyro", hrp)
+		flyBG.MaxTorque = Vector3.new(1e9,1e9,1e9)
+	else
+		if flyBV then flyBV:Destroy() end
+		if flyBG then flyBG:Destroy() end
+	end
+end)
+
+-- Infinite Jump
+UIS.JumpRequest:Connect(function()
+	if infjump then
+		hum:ChangeState(Enum.HumanoidStateType.Jumping)
+	end
+end)
+
+jumpBtn.MouseButton1Click:Connect(function()
+	infjump = not infjump
+	jumpBtn.Text = "Inf Jump: " .. (infjump and "ON" or "OFF")
+end)
